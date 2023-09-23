@@ -19,9 +19,10 @@
 		const POP = "\u202C";
 
 		// TODO(Amr Ojjeh): Handle selecting text and pressing tab
-		// TODO(Amr Ojjeh): If direction changes, change all RTLOs to LTROs
+		// TODO(Amr Ojjeh): Invert button (change dir and rtls to lts)
+		// TODO(Amr Ojjeh): Wrap with LTR Override
 		// TODO(Amr Ojjeh): Add a clean button
-		// TODO(Amr Ojjeh): Restart if there's a new line
+		// TODO(Amr Ojjeh): Handle more navs in keydown for indicator
 		// TODO(Amr Ojjeh): Refine indicator to handle more events
 		// TODO(Amr Ojjeh): Change dir with shift tab
 		class MixedRTL extends HTMLElement {
@@ -35,6 +36,7 @@
 				this.HTML.highlightDiv = this.querySelector("[data-highlight]");
 				this.HTML.override = this.querySelector("[data-override]");
 				this.HTML.pop = this.querySelector("[data-pop]");
+				this.HTML.explicitMode = this.querySelector("[data-explicit]");
 
 				this.partial = Object.create(null);
 				this.partial.highlightDiv = null;
@@ -43,16 +45,19 @@
 				this.state.dir = "ltr";
 				this.state.pop = false;
 				this.state.override = false;
+				this.state.explicitMode = false;
 			}
 
 			connectedCallback() {
 				this.HTML.textarea.addEventListener("input", this._input);
 				this.HTML.textarea.addEventListener("keydown", this._keydown);
+				this.HTML.explicitMode.addEventListener("click", this._click);
 			}
 
 			disconnectedCallback() {
 				this.HTML.textarea.removeEventListener("input", this._input);
 				this.HTML.textarea.removeEventListener("keydown", this._keydown);
+				this.HTML.explicitMode.removeEventListener("click", this._click);
 			}
 
 			updateIndicators(prev='') {
@@ -75,8 +80,15 @@
 				this.partial.highlightDiv = document.createDocumentFragment();
 
 				let line = {override: false, text: ""};
+				const override_token = this.state.dir === "ltr" ? RTLO : LTRO;
 				for (let i = 0; i < content.length; ++i) {
-					if (!line.override && content[i] === RTLO || content[i] === LTRO) {
+					if (content[i] === "\n") {
+						if (line.text) {
+							this.partial.highlightDiv.appendChild(this.createSpan(line.text, line.override));
+							line.text = "";
+						}
+						line.override = false;
+					} else if (!line.override && content[i] === override_token) {
 						if (line.text) {
 							this.partial.highlightDiv.appendChild(this.createSpan(line.text));
 							line.text = "";
@@ -100,12 +112,15 @@
 			inOverride(index, start=0) {
 				console.assert(index >= start);
 				const content = this.HTML.textarea.value;
+				const override_token = this.state.dir === "ltr" ? RTLO : LTRO;
 
-				if (content[index] === RTLO ||
-					  content[index] === LTRO ||
-					  content[index] === POP) {
+				if (content[index] === override_token) {
 						return true;
 					}
+
+				if (content[index] === POP) {
+					return false;
+				}
 
 				let override = false;
 				for (let i = start; i < content.length; ++i) {
@@ -113,7 +128,7 @@
 						return override;
 					}
 					const c = content[i];
-					if (c === RTLO || c === LTRO) {
+					if (c === override_token) {
 						override = true;
 					} else if (c === POP) {
 						override = false;
@@ -149,8 +164,11 @@
 							<div data-override class="w-5 h-5 drop-shadow rounded-xl border border-1 border-green-600 block float-left"></div> <p class="pl-7">Override</p>
 							<div data-pop class="w-5 h-5 drop-shadow rounded-xl border border-1 border-red-600 block float-left"></div> <p   class="pl-7">Pop</p>
 						</div>
-						<div class="flex">
+						<div>
 							<p><my-kbd value="Tab" class="pr-1"></my-kbd>Change direction</p>
+						</div>
+						<div>
+							<button data-explicit class="bg-blue-600 text-white p-2 rounded-md" type="button">Apply explicit</button>
 						</div>
 					</div>
 					<div dir=${dir} class="relative top-0 left-0 grow">
@@ -158,6 +176,19 @@
 						<textarea data-textarea autofocus spellcheck="false" placeholder="Type here..." class="text-xl caret-black text-transparent bg-transparent absolute top-0 left-0 h-full w-full resize-none p-4"></textarea>
 					</div>
 				</div>`;
+			}
+
+			applyExplicit() {
+				let content = this.HTML.textarea.value;
+				if (this.state.dir === "ltr") {
+					if (content[0] !== LTRO) {
+						content = this.HTML.textarea.value = LTRO + content;
+					}
+					if (content[content.length - 1] !== POP) {
+						this.HTML.textarea.value = content + POP;
+					}
+				}
+				this.update();
 			}
 
 			// Events
@@ -173,7 +204,7 @@
 				if (e.key === "Tab" && !e.shiftKey) {
 					e.preventDefault();
 					if (start === end) {
-						if (this.inOverride(start - 1)) {
+						if (start > 0 && this.inOverride(start - 1)) {
 							e.target.value = content.substring(0, start) + POP + content.substring(start);
 						} else {
 							const rune = this.state.dir === "ltr" ? RTLO : LTRO;
@@ -189,6 +220,10 @@
 				} else if (e.key === "ArrowRight"){
 					this.updateIndicators(content[start]);
 				}
+			}
+
+			_click = (e) => {
+				this.applyExplicit();
 			}
 		}
 
