@@ -4,26 +4,212 @@
 	<title>Mixed Direction</title>
 	<script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-blue-100">
-	<nav class="py-5">
+<body class="bg-blue-100 h-screen w-screen flex flex-col">
+	<nav class="py-5 drop-shadow-xl bg-blue-700">
 		<h1 class="text-center text-white text-3xl">Mixed Direction</h1>
 	</nav>
+	<div class="p-10 w-full grow my-auto">
+		<mixed-rtl class="h-full w-full"></mixed-rtl>
+	</div>
 	<script>
 		const html = String.raw;
+
+		const RTLO = "\u202E";
+		const LTRO = "\u202D";
+		const POP = "\u202C";
+
+		// TODO(Amr Ojjeh): Handle selecting text and pressing tab
+		// TODO(Amr Ojjeh): If direction changes, change all RTLOs to LTROs
+		// TODO(Amr Ojjeh): Add a clean button
+		// TODO(Amr Ojjeh): Restart if there's a new line
+		// TODO(Amr Ojjeh): Refine indicator to handle more events
+		// TODO(Amr Ojjeh): Change dir with shift tab
 		class MixedRTL extends HTMLElement {
 			constructor() {
-				this.super();
+				super();
+
+				this.innerHTML = this.initHTML();
+				this.HTML = Object.create(null);
+				this.HTML.root = this.querySelector("div");
+				this.HTML.textarea = this.querySelector("[data-textarea]");
+				this.HTML.highlightDiv = this.querySelector("[data-highlight]");
+				this.HTML.override = this.querySelector("[data-override]");
+				this.HTML.pop = this.querySelector("[data-pop]");
+
+				this.partial = Object.create(null);
+				this.partial.highlightDiv = null;
+
+				this.state = Object.create(null);
+				this.state.dir = "ltr";
+				this.state.pop = false;
+				this.state.override = false;
 			}
 
-			initHTML() {
+			connectedCallback() {
+				this.HTML.textarea.addEventListener("input", this._input);
+				this.HTML.textarea.addEventListener("keydown", this._keydown);
+			}
+
+			disconnectedCallback() {
+				this.HTML.textarea.removeEventListener("input", this._input);
+				this.HTML.textarea.removeEventListener("keydown", this._keydown);
+			}
+
+			updateIndicators(prev='') {
+				if (prev === '') {
+					prev = this.HTML.textarea.value[this.HTML.textarea.selectionStart - 1];
+				}
+
+				this.state.override = false;
+				this.state.pop = false;
+				if (prev === RTLO || prev === LTRO) {
+					this.state.override = true;
+				} else if (prev === POP) {
+					this.state.pop = true;
+				}
+				this.renderIndicators();
+			}
+
+			update() {
+				const content = this.HTML.textarea.value;
+				this.partial.highlightDiv = document.createDocumentFragment();
+
+				let line = {override: false, text: ""};
+				for (let i = 0; i < content.length; ++i) {
+					if (!line.override && content[i] === RTLO || content[i] === LTRO) {
+						if (line.text) {
+							this.partial.highlightDiv.appendChild(this.createSpan(line.text));
+							line.text = "";
+						}
+						line.override = true;
+					} else if (line.override && content[i] === POP){
+						if (line.text) {
+							this.partial.highlightDiv.appendChild(this.createSpan(line.text, true));
+							line.text = "";
+						}
+						line.override = false;
+					}
+					line.text += content[i];
+				}
+				if (line.text) {
+					this.partial.highlightDiv.appendChild(this.createSpan(line.text, line.override))
+				}
+				this.renderHighlight();
+			}
+
+			inOverride(index, start=0) {
+				console.assert(index >= start);
+				const content = this.HTML.textarea.value;
+
+				if (content[index] === RTLO ||
+					  content[index] === LTRO ||
+					  content[index] === POP) {
+						return true;
+					}
+
+				let override = false;
+				for (let i = start; i < content.length; ++i) {
+					if (i === index) {
+						return override;
+					}
+					const c = content[i];
+					if (c === RTLO || c === LTRO) {
+						override = true;
+					} else if (c === POP) {
+						override = false;
+					}
+				}
+			}
+
+			createSpan(text, override=false) {
+				const span = document.createElement("span");
+				span.innerText = text.replaceAll(" ", "\u00A0");
+				if (override) {
+					span.className = "bg-orange-100 rounded-md underline";
+				}
+				return span;
+			}
+
+			renderHighlight() {
+				this.HTML.root.setAttribute("dir", this.state.dir);
+				this.HTML.highlightDiv.innerHTML = "";
+				this.HTML.highlightDiv.appendChild(this.partial.highlightDiv);
+			}
+
+			renderIndicators() {
+				this.HTML.override.classList.toggle("bg-green-600", this.state.override);
+				this.HTML.pop.classList.toggle("bg-red-600", this.state.pop);
+			}
+
+			initHTML(dir="ltr") {
 				return html`
-					<div class="relative top-0 left-0">
-						<div class="absolute top-0 left-0"></div>
-						<textarea class="absolute top-0 left-0"></textarea>
+				<div class="h-full w-full flex flex-col">
+					<div class="flex flex-row items-center justify-items-center place-content-between pb-2">
+						<div>
+							<div data-override class="w-5 h-5 drop-shadow rounded-xl border border-1 border-green-600 block float-left"></div> <p class="pl-7">Override</p>
+							<div data-pop class="w-5 h-5 drop-shadow rounded-xl border border-1 border-red-600 block float-left"></div> <p   class="pl-7">Pop</p>
+						</div>
+						<div class="flex">
+							<p><my-kbd value="Tab" class="pr-1"></my-kbd>Change direction</p>
+						</div>
 					</div>
-				`;
+					<div dir=${dir} class="relative top-0 left-0 grow">
+						<div data-highlight class="absolute top-0 left-0 text-xl h-full w-full p-4 bg-white drop-shadow-2xl"></div>
+						<textarea data-textarea autofocus spellcheck="false" placeholder="Type here..." class="text-xl caret-black text-transparent bg-transparent absolute top-0 left-0 h-full w-full resize-none p-4"></textarea>
+					</div>
+				</div>`;
+			}
+
+			// Events
+			_input = (e) => {
+				this.updateIndicators();
+				this.update();
+			}
+
+			_keydown = (e) => {
+				let content = e.target.value;
+				const start = e.target.selectionStart;
+				const end = e.target.selectionEnd;
+				if (e.key === "Tab" && !e.shiftKey) {
+					e.preventDefault();
+					if (start === end) {
+						if (this.inOverride(start - 1)) {
+							e.target.value = content.substring(0, start) + POP + content.substring(start);
+						} else {
+							const rune = this.state.dir === "ltr" ? RTLO : LTRO;
+							e.target.value = content.substring(0, start) + rune + content.substring(start);
+						}
+					}
+					this.update();
+					this.updateIndicators();
+					return;
+				}
+				if (e.key === "ArrowLeft") {
+					this.updateIndicators(content[start - 2] || null);
+				} else if (e.key === "ArrowRight"){
+					this.updateIndicators(content[start]);
+				}
 			}
 		}
+
+		class KeyboardInput extends HTMLElement {
+			constructor() {
+				super();
+				this.innerHTML = html`<kbd class="rounded-sm p-1 bg-gray-200 drop-shadow font-bold text-sm"></kbd>`;
+				this.HTML = Object.create(null);
+				this.HTML.root = this.querySelector("kbd");
+			}
+
+			attributeChangedCallback(name, oldValue, newValue) {
+				this.HTML.root.innerText = newValue;
+			}
+
+			static get observedAttributes() {
+				return ["value"];
+			}
+		}
+
+		customElements.define("my-kbd", KeyboardInput);
 		customElements.define("mixed-rtl", MixedRTL);
 	</script>
 </body>
