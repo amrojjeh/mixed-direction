@@ -255,14 +255,26 @@
 				const end = e.target.selectionEnd;
 				if (e.key === "Tab" && !e.shiftKey) {
 					e.preventDefault();
+					const rune = this.state.dir === "ltr" ? RTLO : LTRO;
 					if (start === end) {
 						if (start > 0 && this.inOverride(start - 1)) {
 							e.target.value = content.substring(0, start) + POP + content.substring(start);
 						} else {
-							const rune = this.state.dir === "ltr" ? RTLO : LTRO;
 							e.target.value = content.substring(0, start) + rune + content.substring(start);
 							e.target.selectionStart = start;
 							e.target.selectionEnd = end;
+						}
+					} else {
+						if (hasOverrides(content.substring(start, end + 1))) {
+							const regex = new RegExp(`[${RTLO}${LTRO}${POP}]`, "g");
+							e.target.value = content.substring(0, start) + content.substring(start, end + 1).replaceAll(regex, "") + content.substring(end + 1);
+							e.target.selectionStart = start;
+							e.target.selectionEnd = end;
+						} else {
+							e.target.value = content.substring(0, start) + rune +
+								content.substring(start, end) + POP + content.substring(end);
+							e.target.selectionStart = start;
+							e.target.selectionEnd = end + 1;
 						}
 					}
 					this.update();
@@ -300,6 +312,15 @@
 
 		customElements.define("my-kbd", KeyboardInput);
 		customElements.define("mixed-rtl", MixedRTL);
+
+		function hasOverrides(str) {
+			for (let c of str) {
+				if (c === RTLO || c === LTRO || c === POP) {
+					return true;
+				}
+			}
+			return false;
+		}
 	</script>
 </body>
 </html>
