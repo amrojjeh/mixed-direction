@@ -19,11 +19,10 @@
 		const POP = "\u202C";
 
 		// TODO(Amr Ojjeh): Handle selecting text and pressing tab
-		// TODO(Amr Ojjeh): Invert button (change dir and rtls to lts)
-		// TODO(Amr Ojjeh): Wrap with LTR Override
 		// TODO(Amr Ojjeh): Add a clean button
 		// TODO(Amr Ojjeh): Handle more navs in keydown for indicator
 		// TODO(Amr Ojjeh): Refine indicator to handle more events
+		// TODO(Amr Ojjeh): Invert button (change dir and rtls to lts)
 		// TODO(Amr Ojjeh): Change dir with shift tab
 		class MixedRTL extends HTMLElement {
 			constructor() {
@@ -79,32 +78,81 @@
 				const content = this.HTML.textarea.value;
 				this.partial.highlightDiv = document.createDocumentFragment();
 
-				let line = {override: false, text: ""};
+				let line = {strict: false, override: false, text: ""};
+				let overrides = [];
+				overrides.stricts = 0;
+				overrides.overrides = 0;
+				let push = "";
 				const override_token = this.state.dir === "ltr" ? RTLO : LTRO;
+				const strict_token = this.state.dir === "ltr" ? LTRO : RTLO;
 				for (let i = 0; i < content.length; ++i) {
 					if (content[i] === "\n") {
-						if (line.text) {
-							this.partial.highlightDiv.appendChild(this.createSpan(line.text, line.override));
-							line.text = "";
+						overrides = [];
+						overrides.stricts = 0;
+						overrides.overrides = 0;
+						push = "\n";
+					} else if (content[i] === override_token) {
+						overrides.push(override_token);
+						overrides.overrides++;
+						if (overrides.overrides === 1) {
+							push = "override";
 						}
-						line.override = false;
-					} else if (!line.override && content[i] === override_token) {
-						if (line.text) {
-							this.partial.highlightDiv.appendChild(this.createSpan(line.text));
-							line.text = "";
+					} else if (content[i] == strict_token) {
+						overrides.push(strict_token)
+						overrides.stricts++;
+						if (overrides.stricts === 1) {
+							push = "strict";
 						}
-						line.override = true;
-					} else if (line.override && content[i] === POP){
-						if (line.text) {
-							this.partial.highlightDiv.appendChild(this.createSpan(line.text, true));
-							line.text = "";
+					} else if (content[i] === POP){
+						const token = overrides.pop();
+						switch (token) {
+							case override_token:
+								overrides.overrides--;
+								if (overrides.overrides === 0) {
+									push = "pop_override";
+								}
+								break;
+							case strict_token:
+								overrides.stricts--;
+								if (overrides.stricts === 0) {
+									push = "pop_strict";
+								}
+								break;
+							default:
+								break;
 						}
-						line.override = false;
 					}
 					line.text += content[i];
+					if (push) {
+						let os = overrides.overrides;
+						let ss = overrides.stricts;
+						switch (push) {
+							case "override":
+								os -= 1;
+								break;
+							case "pop_override":
+								os += 1;
+								break;
+							case "strict":
+								ss -= 1;
+								break;
+							case "pop_strict":
+								ss += 1;
+								break;
+						}
+						line.strict = ss > 0;
+						line.override = os > 0;
+						this.partial.highlightDiv.appendChild(this.createSpan(line));
+						line.text = "";
+						line.strict = false;
+						line.override = false;
+						push = "";
+					}
 				}
 				if (line.text) {
-					this.partial.highlightDiv.appendChild(this.createSpan(line.text, line.override))
+					line.strict = overrides.stricts > 0;
+					line.override = overrides.overrides > 0;
+					this.partial.highlightDiv.appendChild(this.createSpan(line))
 				}
 				this.renderHighlight();
 			}
@@ -136,11 +184,15 @@
 				}
 			}
 
-			createSpan(text, override=false) {
+			createSpan(line) {
+				console.log(line);
 				const span = document.createElement("span");
-				span.innerText = text.replaceAll(" ", "\u00A0");
-				if (override) {
-					span.className = "bg-orange-100 rounded-md underline";
+				span.innerText = line.text.replaceAll(" ", "\u00A0");
+				if (line.override) {
+					span.classList.add("bg-orange-100", "rounded-md", "underline");
+				}
+				if (line.strict) {
+					span.classList.add("decoration-blue-600", "decoration-2", "underline");
 				}
 				return span;
 			}
@@ -209,6 +261,8 @@
 						} else {
 							const rune = this.state.dir === "ltr" ? RTLO : LTRO;
 							e.target.value = content.substring(0, start) + rune + content.substring(start);
+							e.target.selectionStart = start;
+							e.target.selectionEnd = end;
 						}
 					}
 					this.update();
