@@ -18,8 +18,6 @@
 		const LTRO = "\u202D";
 		const POP = "\u202C";
 
-		// TODO(Amr Ojjeh): Handle selecting text and pressing tab
-		// TODO(Amr Ojjeh): Add a clean button
 		// TODO(Amr Ojjeh): Handle more navs in keydown for indicator
 		// TODO(Amr Ojjeh): Refine indicator to handle more events
 		// TODO(Amr Ojjeh): Invert button (change dir and rtls to lts)
@@ -36,6 +34,8 @@
 				this.HTML.override = this.querySelector("[data-override]");
 				this.HTML.pop = this.querySelector("[data-pop]");
 				this.HTML.explicitMode = this.querySelector("[data-explicit]");
+				this.HTML.reset = this.querySelector("[data-reset]");
+				this.HTML.clean = this.querySelector("[data-clean]");
 
 				this.partial = Object.create(null);
 				this.partial.highlightDiv = null;
@@ -50,13 +50,17 @@
 			connectedCallback() {
 				this.HTML.textarea.addEventListener("input", this._input);
 				this.HTML.textarea.addEventListener("keydown", this._keydown);
-				this.HTML.explicitMode.addEventListener("click", this._click);
+				this.HTML.explicitMode.addEventListener("click", this._clickExplicit);
+				this.HTML.reset.addEventListener("click", this._clickReset)
+				this.HTML.clean.addEventListener("click", this._clickClean);
 			}
 
 			disconnectedCallback() {
 				this.HTML.textarea.removeEventListener("input", this._input);
 				this.HTML.textarea.removeEventListener("keydown", this._keydown);
-				this.HTML.explicitMode.removeEventListener("click", this._click);
+				this.HTML.explicitMode.removeEventListener("click", this._clickExplicit);
+				this.HTML.reset.removeEventListener("click", this._clickReset)
+				this.HTML.clean.removeEventListener("click", this._clickClean);
 			}
 
 			updateIndicators(prev='') {
@@ -189,10 +193,10 @@
 				const span = document.createElement("span");
 				span.innerText = line.text.replaceAll(" ", "\u00A0");
 				if (line.override) {
-					span.classList.add("bg-orange-100", "rounded-md", "underline");
+					span.classList.add("bg-orange-100", "rounded-md");
 				}
 				if (line.strict) {
-					span.classList.add("decoration-blue-600", "decoration-2", "underline");
+					span.classList.add("border-blue-600", "border-b-2");
 				}
 				return span;
 			}
@@ -221,6 +225,8 @@
 						</div>
 						<div>
 							<button data-explicit class="bg-blue-600 text-white p-2 rounded-md" type="button">Apply explicit</button>
+							<button data-reset class="bg-blue-600 text-white p-2 rounded-md" type="button">Reset overrides</button>
+							<button data-clean class="bg-blue-600 text-white p-2 rounded-md" type="button">Clean</button>
 						</div>
 					</div>
 					<div dir=${dir} class="relative top-0 left-0 grow">
@@ -288,8 +294,41 @@
 				}
 			}
 
-			_click = (e) => {
+			_clickExplicit = (e) => {
 				this.applyExplicit();
+			}
+
+			_clickReset = (e) => {
+				const content = this.HTML.textarea.value;
+				const regex = new RegExp(`[${RTLO}${LTRO}${POP}]`, "g");
+				this.HTML.textarea.value = content.replaceAll(regex, "");
+				this.update();
+			}
+
+			_clickClean = (e) => {
+				let overrides = 0;
+				const content = this.HTML.textarea.value;
+				let text = "";
+				for (let i = 0; i < content.length; ++i) {
+					switch (content[i]) {
+						case RTLO:
+						case LTRO:
+							overrides++;
+							text += content[i];
+							break;
+						case POP:
+							if (overrides > 0) {
+								overrides--;
+								text += content[i];
+							}
+							break;
+						default:
+							text += content[i];
+					}
+				}
+				text += POP.repeat(overrides);
+				this.HTML.textarea.value = text;
+				this.update();
 			}
 		}
 
